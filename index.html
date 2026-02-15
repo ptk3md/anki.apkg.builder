@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV → APKG · Conversor Anki</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --ink: #1a1a2e;
+            --ink-soft: #3d3d5c;
+            --ink-muted: #7a7a9e;
+            --surface: #f5f3ef;
+            --surface-warm: #ebe8e1;
+            --surface-deep: #dedad0;
+            --card: #ffffff;
+            --accent: #c0392b;
+            --accent-light: #e74c3c;
+            --accent-pale: rgba(192, 57, 43, 0.08);
+            --accent-glow: rgba(192, 57, 43, 0.15);
+            --teal: #16a085;
+            --teal-pale: rgba(22, 160, 133, 0.1);
+            --gold: #d4a017;
+            --gold-pale: rgba(212, 160, 23, 0.1);
+            --radius: 10px;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+            --shadow-lg: 0 12px 40px rgba(0,0,0,0.1), 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--surface);
+            color: var(--ink);
+            min-height: 100vh;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .mono { font-family: 'IBM Plex Mono', monospace; }
+
+        /* === BACKGROUND TEXTURE === */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 15% 10%, rgba(192,57,43,0.04) 0%, transparent 50%),
+                radial-gradient(ellipse at 85% 90%, rgba(22,160,133,0.04) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* === LAYOUT === */
+        .wrapper {
+            position: relative;
+            z-index: 1;
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 2rem 1.25rem 4rem;
+        }
+
+        /* === HEADER === */
+        .header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+            animation: fadeIn 0.6s ease;
+        }
+
+        .header-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--card);
+            border: 1px solid var(--surface-deep);
+            padding: 0.35rem 1rem;
+            border-radius: 100px;
+            font-size: 0.75rem;
+            color: var(--ink-muted);
+            font-weight: 500;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .header-badge .dot {
+            width: 6px; height: 6px;
+            background: var(--teal);
+            border-radius: 50%;
+        }
+
+        .header h1 {
+            font-size: clamp(2rem, 5vw, 3rem);
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            line-height: 1.15;
+            margin-bottom: 0.5rem;
+        }
+
+        .header h1 span {
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            color: var(--ink-muted);
+            font-size: 1.05rem;
+            max-width: 480px;
+            margin: 0 auto;
+        }
+
+        /* === CARDS === */
+        .card {
+            background: var(--card);
+            border: 1px solid var(--surface-deep);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
+            padding: 1.75rem;
+            margin-bottom: 1.5rem;
+            transition: box-shadow 0.25s, border-color 0.25s;
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow-md);
+        }
+
+        .step-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .step-num {
+            width: 28px; height: 28px;
+            background: var(--ink);
+            color: white;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .step-header h2 {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        /* === UPLOAD ZONE === */
+        .upload-zone {
+            border: 2px dashed var(--surface-deep);
+            border-radius: var(--radius);
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            background: var(--surface);
+            position: relative;
+        }
+
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--accent);
+            background: var(--accent-pale);
+        }
+
+        .upload-zone.has-file {
+            border-style: solid;
+            border-color: var(--teal);
+            background: var(--teal-pale);
+        }
+
+        .upload-zone svg { margin-bottom: 0.75rem; }
+
+        .upload-zone .label {
+            font-weight: 500;
+            color: var(--ink-soft);
+            margin-bottom: 0.25rem;
+        }
+
+        .upload-zone .sublabel {
+            font-size: 0.8rem;
+            color: var(--ink-muted);
+        }
+
+        .file-info {
+            display: none;
+            margin-top: 1rem;
+            padding: 1rem 1.25rem;
+            background: var(--surface);
+            border: 1px solid var(--surface-deep);
+            border-radius: var(--radius);
+        }
+
+        .file-info.visible { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+
+        .file-meta { display: flex; align-items: center; gap: 0.75rem; }
+        .file-icon {
+            width: 40px; height: 40px;
+            background: var(--teal-pale);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .file-meta-text p:first-child { font-weight: 600; font-size: 0.95rem; }
+        .file-meta-text p:last-child { font-size: 0.8rem; color: var(--ink-muted); }
+
+        /* === FORM ELEMENTS === */
+        .field-label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--ink-soft);
+            margin-bottom: 0.4rem;
+            letter-spacing: 0.02em;
+        }
+
+        .input-field, select.input-field {
+            width: 100%;
+            padding: 0.7rem 0.85rem;
+            border: 1px solid var(--surface-deep);
+            border-radius: 8px;
+            background: var(--surface);
+            color: var(--ink);
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .input-field:focus, select.input-field:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-pale);
+        }
+
+        select.input-field {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%237a7a9e' viewBox='0 0 16 16'%3E%3Cpath d='M8 10.5l-4-4h8l-4 4z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            padding-right: 32px;
+            cursor: pointer;
+        }
+
+        .field-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        @media (max-width: 600px) {
+            .field-grid { grid-template-columns: 1fr; }
+        }
+
+        .field-grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 1rem;
+        }
+
+        @media (max-width: 700px) {
+            .field-grid-3 { grid-template-columns: 1fr; }
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--ink-soft);
+        }
+
+        .checkbox-row input[type="checkbox"] {
+            accent-color: var(--accent);
+            width: 16px; height: 16px;
+        }
+
+        /* === PREVIEW TABLE === */
+        .table-wrap {
+            overflow: auto;
+            max-height: 240px;
+            border: 1px solid var(--surface-deep);
+            border-radius: 8px;
+            margin-bottom: 1.25rem;
+        }
+
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        .preview-table th {
+            background: var(--surface-warm);
+            padding: 0.6rem 0.75rem;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--ink-muted);
+            border-bottom: 1px solid var(--surface-deep);
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        .preview-table td {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--surface);
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--ink-soft);
+        }
+
+        .preview-table tbody tr:hover td {
+            background: var(--accent-pale);
+        }
+
+        /* === STATS BAR === */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.75rem;
+            padding: 1rem;
+            background: var(--surface);
+            border: 1px solid var(--surface-deep);
+            border-radius: var(--radius);
+            margin-bottom: 1.25rem;
+        }
+
+        @media (max-width: 500px) {
+            .stats-bar { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        .stat-item { text-align: center; }
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        .stat-value.accent { color: var(--accent); }
+        .stat-value.teal { color: var(--teal); }
+        .stat-value.gold { color: var(--gold); }
+        .stat-label {
+            font-size: 0.7rem;
+            color: var(--ink-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-weight: 500;
+        }
+
+        /* === BUTTONS === */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+        }
+
+        .btn-accent {
+            background: var(--accent);
+            color: white;
+        }
+        .btn-accent:hover:not(:disabled) {
+            background: var(--accent-light);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px var(--accent-glow);
+        }
+        .btn-accent:active:not(:disabled) { transform: translateY(0); }
+        .btn-accent:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        .btn-outline {
+            background: transparent;
+            color: var(--ink-soft);
+            border: 1px solid var(--surface-deep);
+        }
+        .btn-outline:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .btn-full { width: 100%; }
+
+        .btn-sm { padding: 0.5rem 1rem; font-size: 0.8rem; }
+
+        /* === PROCESSING === */
+        .processing-card {
+            text-align: center;
+            padding: 3rem 2rem;
+        }
+
+        .spinner-ring {
+            width: 48px; height: 48px;
+            border: 3px solid var(--surface-deep);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 1.25rem;
+        }
+
+        .progress-track {
+            height: 4px;
+            background: var(--surface-deep);
+            border-radius: 2px;
+            overflow: hidden;
+            max-width: 300px;
+            margin: 1rem auto 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--accent-light));
+            border-radius: 2px;
+            transition: width 0.4s ease;
+            width: 0%;
+        }
+
+        /* === RESULTS === */
+        .result-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.25rem;
+            background: var(--surface);
+            border: 1px solid var(--surface-deep);
+            border-radius: var(--radius);
+            transition: border-color 0.2s;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+
+        .result-item:hover { border-color: var(--teal); }
+        .result-item + .result-item { margin-top: 0.75rem; }
+
+        .result-meta { display: flex; align-items: center; gap: 0.75rem; }
+        .result-icon {
+            width: 38px; height: 38px;
+            background: var(--teal-pale);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .result-name { font-weight: 600; font-size: 0.9rem; }
+        .result-detail { font-size: 0.78rem; color: var(--ink-muted); }
+
+        /* === TOAST === */
+        .toast {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            background: var(--card);
+            border: 1px solid var(--surface-deep);
+            border-radius: var(--radius);
+            padding: 1rem 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            box-shadow: var(--shadow-lg);
+            transform: translateY(120%);
+            opacity: 0;
+            transition: all 0.35s ease;
+            z-index: 100;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+
+        /* === FOOTER === */
+        .footer {
+            text-align: center;
+            margin-top: 3rem;
+            font-size: 0.78rem;
+            color: var(--ink-muted);
+        }
+
+        .footer .lock-icon { display: inline-block; margin-right: 0.25rem; vertical-align: -1px; }
+
+        /* === HIDDEN === */
+        .hidden { display: none !important; }
+
+        /* === ANIMATIONS === */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .fade-in { animation: fadeIn 0.45s ease forwards; }
+
+        /* === SCROLLBAR === */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--surface-deep); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--ink-muted); }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="wrapper">
+    <!-- HEADER -->
+    <header class="header">
+        <div class="header-badge"><span class="dot"></span> 100% offline no navegador</div>
+        <h1>CSV → <span>Anki</span></h1>
+        <p>Transforme qualquer CSV em decks do Anki prontos para importar. Nenhum dado sai do seu computador.</p>
+    </header>
+
+    <!-- STEP 1: UPLOAD -->
+    <section class="card fade-in" id="uploadCard">
+        <div class="step-header">
+            <div class="step-num">1</div>
+            <h2>Carregar CSV</h2>
+        </div>
+
+        <div class="upload-zone" id="uploadZone" tabindex="0" role="button" aria-label="Clique ou arraste um arquivo CSV">
+            <input type="file" id="csvFile" accept=".csv,.tsv,.txt" style="display:none">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <p class="label">Arraste um arquivo ou clique para selecionar</p>
+            <p class="sublabel">CSV, TSV ou TXT delimitado</p>
+        </div>
+
+        <div class="file-info" id="fileInfo">
+            <div class="file-meta">
+                <div class="file-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                </div>
+                <div class="file-meta-text">
+                    <p id="fileName"></p>
+                    <p id="fileStats"></p>
+                </div>
+            </div>
+            <button class="btn btn-outline btn-sm" id="clearFile">Remover</button>
+        </div>
+    </section>
+
+    <!-- STEP 2: CONFIGURE -->
+    <section class="card fade-in hidden" id="configCard">
+        <div class="step-header">
+            <div class="step-num">2</div>
+            <h2>Configurar mapeamento</h2>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem;">
+            <span class="field-label" style="margin:0">Pré-visualização</span>
+            <label class="checkbox-row">
+                <input type="checkbox" id="hasHeader" checked>
+                Primeira linha é cabeçalho
+            </label>
+        </div>
+
+        <div class="table-wrap">
+            <table class="preview-table" id="previewTable">
+                <thead></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="field-grid" style="margin-bottom:1rem;">
+            <div>
+                <label class="field-label" for="colFrente">Coluna → Frente</label>
+                <select id="colFrente" class="input-field"></select>
+            </div>
+            <div>
+                <label class="field-label" for="colVerso">Coluna → Verso</label>
+                <select id="colVerso" class="input-field"></select>
+            </div>
+            <div>
+                <label class="field-label" for="colDeck">Coluna → Deck <span style="font-weight:400;color:var(--ink-muted)">(opcional)</span></label>
+                <select id="colDeck" class="input-field"><option value="">Todos no mesmo deck</option></select>
+            </div>
+            <div>
+                <label class="field-label" for="colTags">Coluna → Tags <span style="font-weight:400;color:var(--ink-muted)">(opcional)</span></label>
+                <select id="colTags" class="input-field"><option value="">Sem tags</option></select>
+            </div>
+        </div>
+
+        <div class="field-grid-3" style="margin-bottom:1.25rem;">
+            <div>
+                <label class="field-label" for="startRow">Linha inicial</label>
+                <input type="number" id="startRow" value="1" min="1" class="input-field mono">
+            </div>
+            <div>
+                <label class="field-label" for="endRow">Linha final</label>
+                <input type="number" id="endRow" placeholder="Última" class="input-field mono">
+            </div>
+            <div>
+                <label class="field-label" for="deckName">Nome do deck padrão</label>
+                <input type="text" id="deckName" value="Meu Deck" class="input-field">
+            </div>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-value accent mono" id="statTotal">0</div>
+                <div class="stat-label">Total</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value teal mono" id="statSelected">0</div>
+                <div class="stat-label">Válidas</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value mono" id="statDecks">1</div>
+                <div class="stat-label">Decks</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value gold mono" id="statInvalid">0</div>
+                <div class="stat-label">Inválidas</div>
+            </div>
+        </div>
+
+        <button class="btn btn-accent btn-full" id="generateBtn" disabled>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Gerar arquivo(s) .apkg
+        </button>
+    </section>
+
+    <!-- PROCESSING -->
+    <section class="card hidden" id="processCard">
+        <div class="processing-card">
+            <div class="spinner-ring"></div>
+            <h3 style="font-size:1.1rem;font-weight:600;margin-bottom:0.35rem;">Gerando decks…</h3>
+            <p id="processStatus" style="color:var(--ink-muted);font-size:0.9rem;">Inicializando SQLite…</p>
+            <div class="progress-track">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section class="card hidden" id="resultsCard">
+        <div class="step-header">
+            <div class="step-num" style="background:var(--teal);">✓</div>
+            <h2>Arquivos prontos</h2>
+        </div>
+        <div id="resultsList"></div>
+        <button class="btn btn-outline" id="startOver" style="margin-top:1.25rem;">Converter outro arquivo</button>
+    </section>
+
+    <footer class="footer">
+        <span class="lock-icon">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </span>
+        Processamento 100% local · Nenhum dado enviado a servidores
+    </footer>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast">
+    <span id="toastDot" style="width:8px;height:8px;border-radius:50%;background:var(--teal);flex-shrink:0;"></span>
+    <span id="toastMsg"></span>
+</div>
+
+<script>
+// ============================================================
+//  STATE
+// ============================================================
+let csvData = [];
+let headers = [];
+let SQLLib = null;
+
+// ============================================================
+//  DOM REFS
+// ============================================================
+const $ = id => document.getElementById(id);
+const el = {
+    uploadZone: $('uploadZone'), csvFile: $('csvFile'),
+    fileInfo: $('fileInfo'), fileName: $('fileName'), fileStats: $('fileStats'),
+    clearFile: $('clearFile'), configCard: $('configCard'),
+    hasHeader: $('hasHeader'), previewTable: $('previewTable'),
+    colFrente: $('colFrente'), colVerso: $('colVerso'),
+    colDeck: $('colDeck'), colTags: $('colTags'),
+    startRow: $('startRow'), endRow: $('endRow'), deckName: $('deckName'),
+    statTotal: $('statTotal'), statSelected: $('statSelected'),
+    statDecks: $('statDecks'), statInvalid: $('statInvalid'),
+    generateBtn: $('generateBtn'),
+    processCard: $('processCard'), processStatus: $('processStatus'), progressFill: $('progressFill'),
+    resultsCard: $('resultsCard'), resultsList: $('resultsList'),
+    startOver: $('startOver'),
+    toast: $('toast'), toastDot: $('toastDot'), toastMsg: $('toastMsg')
+};
+
+// ============================================================
+//  UTILITIES
+// ============================================================
+function escapeHtml(s) {
+    if (typeof s !== 'string') return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+function showToast(msg, type = 'success') {
+    const colors = { success: 'var(--teal)', error: 'var(--accent)', warning: 'var(--gold)' };
+    el.toastDot.style.background = colors[type] || colors.success;
+    el.toastMsg.textContent = msg;
+    el.toast.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => el.toast.classList.remove('show'), 4000);
+}
+
+function generateGuid() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const bytes = new Uint8Array(10);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, b => chars[b % chars.length]).join('');
+}
+
+function fieldChecksum(str) {
+    // Simple FNV-1a-like 32-bit hash
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0);
+}
+
+// Unique ID generator using timestamp + counter
+let _idCounter = 0;
+function uniqueId() {
+    return Date.now() * 1000 + (++_idCounter);
+}
+
+// ============================================================
+//  FILE HANDLING
+// ============================================================
+function handleFile(file) {
+    if (!file) return;
+    el.fileName.textContent = file.name;
+    el.uploadZone.classList.add('has-file');
+    el.fileInfo.classList.add('visible');
+
+    Papa.parse(file, {
+        complete(results) {
+            csvData = results.data.filter(row => row.some(c => c && c.trim()));
+            const cols = csvData.length > 0 ? csvData[0].length : 0;
+            el.fileStats.textContent = `${csvData.length} linhas × ${cols} colunas`;
+            if (csvData.length > 0) setupConfig();
+            else showToast('Arquivo vazio ou inválido', 'error');
+        },
+        error(err) {
+            showToast('Erro ao ler arquivo: ' + err.message, 'error');
+        }
+    });
+}
+
+function clearFile() {
+    csvData = []; headers = [];
+    el.csvFile.value = '';
+    el.uploadZone.classList.remove('has-file');
+    el.fileInfo.classList.remove('visible');
+    el.configCard.classList.add('hidden');
+    el.processCard.classList.add('hidden');
+    el.resultsCard.classList.add('hidden');
+}
+
+// ============================================================
+//  CONFIG
+// ============================================================
+function setupConfig() {
+    el.configCard.classList.remove('hidden');
+    el.resultsCard.classList.add('hidden');
+    el.processCard.classList.add('hidden');
+
+    const hasH = el.hasHeader.checked;
+    headers = hasH && csvData.length > 0
+        ? csvData[0].map((h, i) => (h && h.trim()) || `Coluna ${i + 1}`)
+        : (csvData[0] || []).map((_, i) => `Coluna ${i + 1}`);
+
+    [el.colFrente, el.colVerso, el.colDeck, el.colTags].forEach(sel => {
+        const prev = sel.value;
+        const isOpt = (sel === el.colDeck || sel === el.colTags);
+        sel.innerHTML = isOpt ? '<option value="">Nenhum</option>' : '<option value="">Selecione…</option>';
+        headers.forEach((h, i) => {
+            const o = document.createElement('option');
+            o.value = i; o.textContent = h;
+            sel.appendChild(o);
+        });
+        if (prev !== '' && parseInt(prev) < headers.length) sel.value = prev;
+    });
+
+    if (el.colFrente.value === '' && headers.length > 0) el.colFrente.value = '0';
+    if (el.colVerso.value === '' && headers.length > 1) el.colVerso.value = '1';
+
+    updatePreview();
+    updateStats();
+}
+
+function updatePreview() {
+    const dataStart = el.hasHeader.checked ? 1 : 0;
+    const rows = csvData.slice(dataStart, dataStart + 8);
+
+    let th = '<tr>' + headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
+    el.previewTable.querySelector('thead').innerHTML = th;
+
+    let tb = '';
+    rows.forEach(r => {
+        tb += '<tr>';
+        for (let i = 0; i < headers.length; i++) {
+            const c = r[i] || '';
+            tb += `<td title="${escapeHtml(c)}">${escapeHtml(c)}</td>`;
+        }
+        tb += '</tr>';
+    });
+    el.previewTable.querySelector('tbody').innerHTML = tb;
+}
+
+function updateStats() {
+    const dataStart = el.hasHeader.checked ? 1 : 0;
+    const dataRows = csvData.slice(dataStart);
+    const start = Math.max(1, parseInt(el.startRow.value) || 1);
+    const end = el.endRow.value ? Math.min(parseInt(el.endRow.value), dataRows.length) : dataRows.length;
+    const cF = parseInt(el.colFrente.value);
+    const cV = parseInt(el.colVerso.value);
+    const cD = el.colDeck.value !== '' ? parseInt(el.colDeck.value) : null;
+
+    let selected = 0, invalid = 0;
+    const decks = new Set();
+
+    if (!isNaN(cF) && !isNaN(cV)) {
+        for (let i = start - 1; i < end && i < dataRows.length; i++) {
+            const row = dataRows[i];
+            const f = (row[cF] || '').trim();
+            const b = (row[cV] || '').trim();
+            if (f && b) {
+                selected++;
+                decks.add(cD !== null && row[cD] ? row[cD].trim() : (el.deckName.value || 'Default'));
+            } else {
+                invalid++;
+            }
+        }
+    }
+
+    el.statTotal.textContent = dataRows.length;
+    el.statSelected.textContent = selected;
+    el.statDecks.textContent = decks.size || 1;
+    el.statInvalid.textContent = invalid;
+    el.generateBtn.disabled = selected === 0;
+}
+
+// ============================================================
+//  APKG GENERATION
+// ============================================================
+async function loadSQL() {
+    if (SQLLib) return SQLLib;
+    SQLLib = await initSqlJs({
+        locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${f}`
+    });
+    return SQLLib;
+}
+
+async function generateApkg(sql, deckName, notes) {
+    const db = new sql.Database();
+    const now = Math.floor(Date.now() / 1000);
+    const deckId = uniqueId();
+    const modelId = deckId + 1;
+
+    // Schema
+    db.run(`
+        CREATE TABLE col (id INTEGER PRIMARY KEY, crt INTEGER NOT NULL, mod INTEGER NOT NULL, scm INTEGER NOT NULL, ver INTEGER NOT NULL, dty INTEGER NOT NULL, usn INTEGER NOT NULL, ls INTEGER NOT NULL, conf TEXT NOT NULL, models TEXT NOT NULL, decks TEXT NOT NULL, dconf TEXT NOT NULL, tags TEXT NOT NULL);
+        CREATE TABLE notes (id INTEGER PRIMARY KEY, guid TEXT NOT NULL, mid INTEGER NOT NULL, mod INTEGER NOT NULL, usn INTEGER NOT NULL, tags TEXT NOT NULL, flds TEXT NOT NULL, sfld TEXT NOT NULL, csum INTEGER NOT NULL, flags INTEGER NOT NULL, data TEXT NOT NULL);
+        CREATE TABLE cards (id INTEGER PRIMARY KEY, nid INTEGER NOT NULL, did INTEGER NOT NULL, ord INTEGER NOT NULL, mod INTEGER NOT NULL, usn INTEGER NOT NULL, type INTEGER NOT NULL, queue INTEGER NOT NULL, due INTEGER NOT NULL, ivl INTEGER NOT NULL, factor INTEGER NOT NULL, reps INTEGER NOT NULL, lapses INTEGER NOT NULL, left INTEGER NOT NULL, odue INTEGER NOT NULL, odid INTEGER NOT NULL, flags INTEGER NOT NULL, data TEXT NOT NULL);
+        CREATE TABLE revlog (id INTEGER PRIMARY KEY, cid INTEGER NOT NULL, usn INTEGER NOT NULL, ease INTEGER NOT NULL, ivl INTEGER NOT NULL, lastIvl INTEGER NOT NULL, factor INTEGER NOT NULL, time INTEGER NOT NULL, type INTEGER NOT NULL);
+        CREATE TABLE graves (usn INTEGER NOT NULL, oid INTEGER NOT NULL, type INTEGER NOT NULL);
+        CREATE INDEX ix_notes_usn ON notes (usn);
+        CREATE INDEX ix_notes_csum ON notes (csum);
+        CREATE INDEX ix_cards_usn ON cards (usn);
+        CREATE INDEX ix_cards_nid ON cards (nid);
+        CREATE INDEX ix_cards_sched ON cards (did, queue, due);
+    `);
+
+    const model = {
+        id: modelId, name: "Basico (CSV Import)", type: 0, mod: now, usn: -1, sortf: 0, did: deckId,
+        tmpls: [{
+            name: "Cartao 1", ord: 0,
+            qfmt: "{{Frente}}",
+            afmt: "{{FrontSide}}<hr id=answer>{{Verso}}",
+            bqfmt: "", bafmt: "", did: null
+        }],
+        flds: [
+            { name: "Frente", ord: 0, sticky: false, rtl: false, font: "Arial", size: 20, media: [] },
+            { name: "Verso", ord: 1, sticky: false, rtl: false, font: "Arial", size: 20, media: [] }
+        ],
+        css: ".card { font-family: arial; font-size: 20px; text-align: center; color: black; background-color: white; }",
+        latexPre: "\\documentclass[12pt]{article}\\special{papersize=3in,5in}\\usepackage[utf8]{inputenc}\\usepackage{amssymb,amsmath}\\pagestyle{empty}\\setlength{\\parindent}{0in}\\begin{document}",
+        latexPost: "\\end{document}", latexsvg: false,
+        req: [[0, "any", [0]]]
+    };
+
+    const deck = {
+        id: deckId, mod: now, name: deckName, usn: -1,
+        lrnToday: [0, 0], revToday: [0, 0], newToday: [0, 0], timeToday: [0, 0],
+        collapsed: false, browserCollapsed: false, desc: "", dyn: 0, conf: 1, extendNew: 10, extendRev: 50
+    };
+
+    const defaultDeck = {
+        id: 1, mod: now, name: "Default", usn: 0,
+        lrnToday: [0, 0], revToday: [0, 0], newToday: [0, 0], timeToday: [0, 0],
+        collapsed: false, browserCollapsed: false, desc: "", dyn: 0, conf: 1, extendNew: 10, extendRev: 50
+    };
+
+    const dconf = {
+        "1": {
+            id: 1, mod: now, name: "Default", usn: -1, maxTaken: 60, autoplay: true, timer: 0, replayq: true,
+            new: { bury: true, delays: [1, 10], initialFactor: 2500, ints: [1, 4, 7], order: 1, perDay: 20 },
+            rev: { bury: true, ease4: 1.3, fuzz: 0.05, ivlFct: 1, maxIvl: 36500, perDay: 200, hardFactor: 1.2 },
+            lapse: { delays: [10], leechAction: 0, leechFails: 8, minInt: 1, mult: 0 }
+        }
+    };
+
+    const decksJson = JSON.stringify({ "1": defaultDeck, [deckId]: deck });
+    const modelsJson = JSON.stringify({ [modelId]: model });
+    const dconfJson = JSON.stringify(dconf);
+
+    db.run(
+        "INSERT INTO col (id, crt, mod, scm, ver, dty, usn, ls, conf, models, decks, dconf, tags) VALUES (1, ?, ?, ?, 11, 0, -1, ?, '{}', ?, ?, ?, '{}')",
+        [now, now, now, now, modelsJson, decksJson, dconfJson]
+    );
+
+    let due = 1;
+    for (const note of notes) {
+        const noteId = uniqueId();
+        const cardId = uniqueId();
+        const guid = generateGuid();
+        const flds = note.front + "\x1f" + note.back;
+        const sfld = note.front.replace(/<[^>]*>/g, '');
+        const csum = fieldChecksum(sfld);
+        const tags = note.tags || '';
+
+        db.run(
+            "INSERT INTO notes (id, guid, mid, mod, usn, tags, flds, sfld, csum, flags, data) VALUES (?, ?, ?, ?, -1, ?, ?, ?, ?, 0, '')",
+            [noteId, guid, modelId, now, tags, flds, sfld, csum]
+        );
+        db.run(
+            "INSERT INTO cards (id, nid, did, ord, mod, usn, type, queue, due, ivl, factor, reps, lapses, left, odue, odid, flags, data) VALUES (?, ?, ?, 0, ?, -1, 0, 0, ?, 0, 0, 0, 0, 0, 0, 0, 0, '')",
+            [cardId, noteId, deckId, now, due++]
+        );
+    }
+
+    const bin = db.export();
+    db.close();
+
+    const zip = new JSZip();
+    zip.file("collection.anki2", bin);
+    zip.file("media", "{}");
+
+    return await zip.generateAsync({ type: "blob" });
+}
+
+// ============================================================
+//  MAIN PROCESS
+// ============================================================
+async function processAndGenerate() {
+    el.configCard.classList.add('hidden');
+    el.processCard.classList.remove('hidden');
+    el.progressFill.style.width = '0%';
+    _idCounter = 0;
+
+    try {
+        const dataStart = el.hasHeader.checked ? 1 : 0;
+        const dataRows = csvData.slice(dataStart);
+        const start = Math.max(1, parseInt(el.startRow.value) || 1);
+        const end = el.endRow.value ? Math.min(parseInt(el.endRow.value), dataRows.length) : dataRows.length;
+        const cF = parseInt(el.colFrente.value);
+        const cV = parseInt(el.colVerso.value);
+        const cD = el.colDeck.value !== '' ? parseInt(el.colDeck.value) : null;
+        const cT = el.colTags.value !== '' ? parseInt(el.colTags.value) : null;
+        const defaultName = el.deckName.value || 'Default';
+
+        const decksMap = new Map();
+        for (let i = start - 1; i < end && i < dataRows.length; i++) {
+            const row = dataRows[i];
+            const front = (row[cF] || '').trim();
+            const back = (row[cV] || '').trim();
+            if (!front || !back) continue;
+
+            let dk = defaultName;
+            if (cD !== null && row[cD]) dk = row[cD].trim() || defaultName;
+
+            let tags = '';
+            if (cT !== null && row[cT]) {
+                tags = row[cT].split(/[,;|]/).map(t => t.trim()).filter(Boolean).join(' ');
+            }
+
+            if (!decksMap.has(dk)) decksMap.set(dk, []);
+            decksMap.get(dk).push({ front, back, tags });
+        }
+
+        el.processStatus.textContent = `Carregando SQLite…`;
+        const sql = await loadSQL();
+
+        const results = [];
+        let progress = 0;
+        const total = decksMap.size;
+
+        for (const [name, notes] of decksMap) {
+            el.processStatus.textContent = `"${name}" — ${notes.length} cartões…`;
+            const blob = await generateApkg(sql, name, notes);
+            results.push({ name: name + '.apkg', size: blob.size, cards: notes.length, blob });
+            progress++;
+            el.progressFill.style.width = `${(progress / total) * 100}%`;
+            await new Promise(r => setTimeout(r, 80)); // brief yield for UI
+        }
+
+        el.processCard.classList.add('hidden');
+        showResults(results);
+    } catch (err) {
+        console.error(err);
+        el.processCard.classList.add('hidden');
+        el.configCard.classList.remove('hidden');
+        showToast('Erro: ' + err.message, 'error');
+    }
+}
+
+function showResults(results) {
+    el.resultsCard.classList.remove('hidden');
+    el.resultsList.innerHTML = '';
+
+    let totalCards = 0;
+    results.forEach(r => {
+        totalCards += r.cards;
+        const kb = (r.size / 1024).toFixed(1);
+        const div = document.createElement('div');
+        div.className = 'result-item';
+        div.innerHTML = `
+            <div class="result-meta">
+                <div class="result-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="result-name">${escapeHtml(r.name)}</div>
+                    <div class="result-detail">${r.cards} cartões · ${kb} KB</div>
+                </div>
+            </div>
+            <button class="btn btn-accent btn-sm dl-btn">Download</button>`;
+        div.querySelector('.dl-btn').onclick = () => saveAs(r.blob, r.name);
+        el.resultsList.appendChild(div);
+    });
+
+    if (results.length > 1) {
+        const wrap = document.createElement('div');
+        wrap.style.marginTop = '1rem';
+        wrap.innerHTML = `<button class="btn btn-accent btn-full" id="dlAll">Baixar todos (${totalCards} cartões)</button>`;
+        wrap.querySelector('#dlAll').onclick = () => results.forEach(r => saveAs(r.blob, r.name));
+        el.resultsList.appendChild(wrap);
+    }
+
+    showToast(`${results.length} deck(s) gerado(s) com sucesso!`);
+}
+
+// ============================================================
+//  EVENT LISTENERS
+// ============================================================
+el.uploadZone.addEventListener('click', () => el.csvFile.click());
+el.csvFile.addEventListener('change', e => handleFile(e.target.files[0]));
+el.uploadZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.csvFile.click(); }});
+
+el.uploadZone.addEventListener('dragover', e => { e.preventDefault(); el.uploadZone.classList.add('dragover'); });
+el.uploadZone.addEventListener('dragleave', () => el.uploadZone.classList.remove('dragover'));
+el.uploadZone.addEventListener('drop', e => { e.preventDefault(); el.uploadZone.classList.remove('dragover'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+
+el.clearFile.addEventListener('click', clearFile);
+el.hasHeader.addEventListener('change', setupConfig);
+
+[el.colFrente, el.colVerso, el.colDeck, el.colTags].forEach(s => s.addEventListener('change', updateStats));
+el.startRow.addEventListener('input', updateStats);
+el.endRow.addEventListener('input', updateStats);
+el.deckName.addEventListener('input', updateStats);
+
+el.generateBtn.addEventListener('click', processAndGenerate);
+el.startOver.addEventListener('click', clearFile);
+</script>
+</body>
+</html>
