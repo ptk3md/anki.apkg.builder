@@ -995,7 +995,7 @@ async function generateApkg(sql, deckName, notes) {
     zip.file("collection.anki2", bin);
     zip.file("media", "{}");
 
-    return await zip.generateAsync({ type: "blob" });
+    return await zip.generateAsync({ type: "blob", mimeType: "application/octet-stream" });
 }
 
 // ============================================================
