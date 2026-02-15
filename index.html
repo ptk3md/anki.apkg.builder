@@ -538,14 +538,12 @@
 <body>
 
 <div class="wrapper">
-    <!-- HEADER -->
     <header class="header">
         <div class="header-badge"><span class="dot"></span> 100% offline no navegador</div>
         <h1>CSV → <span>Anki</span></h1>
         <p>Transforme qualquer CSV em decks do Anki prontos para importar. Nenhum dado sai do seu computador.</p>
     </header>
 
-    <!-- STEP 1: UPLOAD -->
     <section class="card fade-in" id="uploadCard">
         <div class="step-header">
             <div class="step-num">1</div>
@@ -580,7 +578,6 @@
         </div>
     </section>
 
-    <!-- STEP 2: CONFIGURE -->
     <section class="card fade-in hidden" id="configCard">
         <div class="step-header">
             <div class="step-num">2</div>
@@ -665,7 +662,6 @@
         </button>
     </section>
 
-    <!-- PROCESSING -->
     <section class="card hidden" id="processCard">
         <div class="processing-card">
             <div class="spinner-ring"></div>
@@ -677,7 +673,6 @@
         </div>
     </section>
 
-    <!-- RESULTS -->
     <section class="card hidden" id="resultsCard">
         <div class="step-header">
             <div class="step-num" style="background:var(--teal);">✓</div>
@@ -695,7 +690,6 @@
     </footer>
 </div>
 
-<!-- TOAST -->
 <div id="toast" class="toast">
     <span id="toastDot" style="width:8px;height:8px;border-radius:50%;background:var(--teal);flex-shrink:0;"></span>
     <span id="toastMsg"></span>
@@ -770,6 +764,18 @@ function fieldChecksum(str) {
 let _idCounter = 0;
 function uniqueId() {
     return Date.now() * 1000 + (++_idCounter);
+}
+
+// Native HTML5 download method to avoid auto .zip extensions
+function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
 
 // ============================================================
@@ -995,7 +1001,8 @@ async function generateApkg(sql, deckName, notes) {
     zip.file("collection.anki2", bin);
     zip.file("media", "{}");
 
-    return await zip.generateAsync({ type: "blob", mimeType: "application/octet-stream" });
+    // Alterado o mimeType para application/apkg para evitar a extensão .zip automática
+    return await zip.generateAsync({ type: "blob", mimeType: "application/apkg" });
 }
 
 // ============================================================
@@ -1088,7 +1095,8 @@ function showResults(results) {
                 </div>
             </div>
             <button class="btn btn-accent btn-sm dl-btn">Download</button>`;
-        div.querySelector('.dl-btn').onclick = () => saveAs(r.blob, r.name);
+        // Usando a nova função downloadBlob em vez do saveAs
+        div.querySelector('.dl-btn').onclick = () => downloadBlob(r.blob, r.name);
         el.resultsList.appendChild(div);
     });
 
@@ -1096,7 +1104,8 @@ function showResults(results) {
         const wrap = document.createElement('div');
         wrap.style.marginTop = '1rem';
         wrap.innerHTML = `<button class="btn btn-accent btn-full" id="dlAll">Baixar todos (${totalCards} cartões)</button>`;
-        wrap.querySelector('#dlAll').onclick = () => results.forEach(r => saveAs(r.blob, r.name));
+        // Usando a nova função downloadBlob em vez do saveAs
+        wrap.querySelector('#dlAll').onclick = () => results.forEach(r => downloadBlob(r.blob, r.name));
         el.resultsList.appendChild(wrap);
     }
 
